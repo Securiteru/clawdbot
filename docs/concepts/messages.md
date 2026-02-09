@@ -30,6 +30,22 @@ Key knobs live in configuration:
 
 See [Configuration](/gateway/configuration) for full schema.
 
+## When the agent responds (gating + mentions)
+
+Every channel monitor applies the same gates before reaching the auto-reply pipeline:
+
+1. **Route + session:** `resolveAgentRoute` maps the inbound (channel/account/peer) to an agent and session key.
+2. **Access control:** Channel-specific allowlist/pairing rules (for example, Slack `dmPolicy`, WhatsApp `checkInboundAccessControl`) can drop unauthorized senders before any LLM work.
+3. **Group activation:** `resolveGroupActivationFor` (driven by `messages.groupChat.activation` or per-agent overrides) decides whether group chats require a mention. `always` processes everything; `mention`/`interactive` enforce mention or owner activation.
+4. **Mention detection:** Channel monitors set `wasMentioned` using channel-native signals plus configurable mention patterns (`buildMentionRegexes` derived from agent identity or `mentionPatterns`). Examples:
+   - Slack: `prepareSlackMessage` treats `app_mention` events, explicit `<@bot>` tags, and regex matches as mentions.
+   - Discord: `preflightDiscordMessage` inspects user/role mentions and apply mention-bypass for authorized control commands.
+   - Telegram/WhatsApp: bot username/phone/regex matches and reply-to-self are treated as mentions (`applyGroupGating`, `debugMention`).
+5. **Mention gating:** `resolveMentionGating` / `resolveMentionGatingWithBypass` enforce the requirement. Authorized control commands can bypass mention requirements; replies to the bot count as an implicit mention.
+6. **Pending history:** If a group message is skipped because no mention was detected, it is cached in the group history buffer so later runs receive the context even though no reply was sent.
+
+Once these gates pass, `getReplyFromConfig` builds the prompt (including pending history) and streams the agent reply through the provider dispatcher.
+
 ## Inbound dedupe
 
 Channels can redeliver the same message after reconnects. OpenClaw keeps a
