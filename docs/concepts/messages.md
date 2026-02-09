@@ -46,6 +46,75 @@ Every channel monitor applies the same gates before reaching the auto-reply pipe
 
 Once these gates pass, `getReplyFromConfig` builds the prompt (including pending history) and streams the agent reply through the provider dispatcher.
 
+### Code excerpts (where this happens)
+
+- **Core mention gate** (`src/channels/mention-gating.ts`):
+
+  ```ts
+  export function resolveMentionGating(params: MentionGateParams): MentionGateResult {
+    const implicit = params.implicitMention === true;
+    const bypass = params.shouldBypassMention === true;
+    const effectiveWasMentioned = params.wasMentioned || implicit || bypass;
+    const shouldSkip = params.requireMention && params.canDetectMention && !effectiveWasMentioned;
+    return { effectiveWasMentioned, shouldSkip };
+  }
+  ```
+
+- **Web/WhatsApp group gating** (`src/web/auto-reply/monitor/group-gating.ts`):
+
+  ```ts
+  const activation = resolveGroupActivationFor({ cfg, agentId, sessionKey, conversationId });
+  const requireMention = activation !== "always";
+  const implicitMention = Boolean(
+    (selfJid && replySenderJid && selfJid === replySenderJid) ||
+    (selfE164 && replySenderE164 && selfE164 === replySenderE164),
+  );
+  const mentionGate = resolveMentionGating({
+    requireMention,
+    canDetectMention: true,
+    wasMentioned,
+    implicitMention,
+    shouldBypassMention,
+  });
+  if (!shouldBypassMention && requireMention && mentionGate.shouldSkip) {
+    // store in pending history and skip reply
+    return { shouldProcess: false };
+  }
+  ```
+
+- **Slack mention detection + bypass** (`src/slack/monitor/message-handler/prepare.ts`):
+
+  ```ts
+  const mentionRegexes = buildMentionRegexes(cfg, route.agentId);
+  const wasMentioned =
+    opts.wasMentioned ??
+    (!isDirectMessage &&
+      matchesMentionWithExplicit({
+        text: message.text ?? "",
+        mentionRegexes,
+        explicit: {
+          hasAnyMention,
+          isExplicitlyMentioned: explicitlyMentioned,
+          canResolveExplicit: Boolean(ctx.botUserId),
+        },
+      }));
+  const mentionGate = resolveMentionGatingWithBypass({
+    isGroup: isRoom,
+    requireMention: Boolean(shouldRequireMention),
+    canDetectMention,
+    wasMentioned,
+    implicitMention,
+    hasAnyMention,
+    allowTextCommands,
+    hasControlCommand: hasControlCommandInMessage,
+    commandAuthorized,
+  });
+  if (isRoom && shouldRequireMention && mentionGate.shouldSkip) {
+    // record pending history and skip
+    return null;
+  }
+  ```
+
 ## Inbound dedupe
 
 Channels can redeliver the same message after reconnects. OpenClaw keeps a
