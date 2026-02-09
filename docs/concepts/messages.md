@@ -39,7 +39,7 @@ Every channel monitor applies the same gates before reaching the auto-reply pipe
 3. **Group activation:** `resolveGroupActivationFor` (driven by `messages.groupChat.activation` or per-agent overrides) decides whether group chats require a mention. `always` processes everything; `mention`/`interactive` enforce mention or owner activation.
 4. **Mention detection:** Channel monitors set `wasMentioned` using channel-native signals plus configurable mention patterns (`buildMentionRegexes` derived from agent identity or `mentionPatterns`). Examples:
    - Slack: `prepareSlackMessage` treats `app_mention` events, explicit `<@bot>` tags, and regex matches as mentions.
-   - Discord: `preflightDiscordMessage` inspects user/role mentions and apply mention-bypass for authorized control commands.
+   - Discord: `preflightDiscordMessage` inspects user/role mentions and applies mention-bypass for authorized control commands.
    - Telegram/WhatsApp: bot username/phone/regex matches and reply-to-self are treated as mentions (`applyGroupGating`, `debugMention`).
 5. **Mention gating:** `resolveMentionGating` / `resolveMentionGatingWithBypass` enforce the requirement. Authorized control commands can bypass mention requirements; replies to the bot count as an implicit mention.
 6. **Pending history:** If a group message is skipped because no mention was detected, it is cached in the group history buffer so later runs receive the context even though no reply was sent.
